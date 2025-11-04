@@ -4,83 +4,131 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
-  // Function to fetch activities from API
+  // Fetch activities, render activity cards (with participants), populate select, handle signups.
   async function fetchActivities() {
-    try {
-      const response = await fetch("/activities");
-      const activities = await response.json();
+    const res = await fetch("/activities");
+    if (!res.ok) throw new Error("Failed to load activities");
+    return await res.json();
+  }
 
-      // Clear loading message
+  function createActivityCard(name, data) {
+    const card = document.createElement("div");
+    card.className = "activity-card";
+
+    const title = document.createElement("h4");
+    title.textContent = name;
+    card.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.textContent = data.description;
+    card.appendChild(desc);
+
+    const sched = document.createElement("p");
+    sched.innerHTML = `<strong>Schedule:</strong> ${data.schedule}`;
+    card.appendChild(sched);
+
+    // Participants header with count badge
+    const partHeader = document.createElement("div");
+    partHeader.className = "participants-title";
+    const headerText = document.createElement("span");
+    headerText.textContent = "Participants";
+    const countBadge = document.createElement("span");
+    countBadge.className = "participants-count";
+    countBadge.textContent = `${data.participants.length}`;
+    partHeader.appendChild(headerText);
+    partHeader.appendChild(countBadge);
+    card.appendChild(partHeader);
+
+    // Participants list (bulleted)
+    if (data.participants.length > 0) {
+      const ul = document.createElement("ul");
+      ul.className = "participants-list";
+      for (const p of data.participants) {
+        const li = document.createElement("li");
+        li.textContent = p;
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "participants-empty";
+      empty.textContent = "No participants yet. Be the first to sign up!";
+      card.appendChild(empty);
+    }
+
+    return card;
+  }
+
+  function showMessage(type, text) {
+    const msg = document.getElementById("message");
+    msg.className = `message ${type}`;
+    msg.textContent = text;
+    msg.classList.remove("hidden");
+    setTimeout(() => msg.classList.add("hidden"), 5000);
+  }
+
+  async function render() {
+    activitiesList.innerHTML = "<p>Loading activities...</p>";
+    activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+
+    try {
+      const activities = await fetchActivities();
       activitiesList.innerHTML = "";
 
-      // Populate activities list
-      Object.entries(activities).forEach(([name, details]) => {
-        const activityCard = document.createElement("div");
-        activityCard.className = "activity-card";
+      // Sort activity names for stable order
+      const names = Object.keys(activities).sort();
+      for (const name of names) {
+        const card = createActivityCard(name, activities[name]);
+        activitiesList.appendChild(card);
 
-        const spotsLeft = details.max_participants - details.participants.length;
-
-        activityCard.innerHTML = `
-          <h4>${name}</h4>
-          <p>${details.description}</p>
-          <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
-        `;
-
-        activitiesList.appendChild(activityCard);
-
-        // Add option to select dropdown
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        activitySelect.appendChild(option);
-      });
-    } catch (error) {
-      activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
-      console.error("Error fetching activities:", error);
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        activitySelect.appendChild(opt);
+      }
+    } catch (err) {
+      activitiesList.innerHTML = `<p class="error">Unable to load activities.</p>`;
+      console.error(err);
     }
   }
 
-  // Handle form submission
-  signupForm.addEventListener("submit", async (event) => {
+  async function handleSignup(event) {
     event.preventDefault();
+    const emailEl = document.getElementById("email");
+    const activityEl = document.getElementById("activity");
+    const email = emailEl.value.trim();
+    const activity = activityEl.value;
 
-    const email = document.getElementById("email").value;
-    const activity = document.getElementById("activity").value;
+    if (!email || !activity) {
+      showMessage("error", "Please provide an email and select an activity.");
+      return;
+    }
 
     try {
-      const response = await fetch(
-        `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+      const encodedActivity = encodeURIComponent(activity);
+      const res = await fetch(
+        `/activities/${encodedActivity}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
         }
       );
 
-      const result = await response.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.message || "Signup failed");
 
-      if (response.ok) {
-        messageDiv.textContent = result.message;
-        messageDiv.className = "success";
-        signupForm.reset();
-      } else {
-        messageDiv.textContent = result.detail || "An error occurred";
-        messageDiv.className = "error";
-      }
+      showMessage("success", data.message || "Signed up successfully");
 
-      messageDiv.classList.remove("hidden");
+      // Re-render to update participants list and count
+      await render();
 
-      // Hide message after 5 seconds
-      setTimeout(() => {
-        messageDiv.classList.add("hidden");
-      }, 5000);
-    } catch (error) {
-      messageDiv.textContent = "Failed to sign up. Please try again.";
-      messageDiv.className = "error";
-      messageDiv.classList.remove("hidden");
-      console.error("Error signing up:", error);
+      // Clear email field
+      emailEl.value = "";
+    } catch (err) {
+      showMessage("error", err.message);
     }
-  });
+  }
 
-  // Initialize app
-  fetchActivities();
+  render();
+  const form = document.getElementById("signup-form");
+  form.addEventListener("submit", handleSignup);
 });
