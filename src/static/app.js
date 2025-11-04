@@ -39,13 +39,41 @@ document.addEventListener("DOMContentLoaded", () => {
     partHeader.appendChild(countBadge);
     card.appendChild(partHeader);
 
-    // Participants list (bulleted)
+    // Participants list (no bullets) with a remove icon for each participant
     if (data.participants.length > 0) {
       const ul = document.createElement("ul");
       ul.className = "participants-list";
       for (const p of data.participants) {
         const li = document.createElement("li");
-        li.textContent = p;
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "participant-email";
+        nameSpan.textContent = p;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "participant-remove";
+        removeBtn.setAttribute("aria-label", `Unregister ${p} from ${name}`);
+        removeBtn.innerHTML = "✖";
+
+        // When clicked, call backend to unregister and re-render
+        removeBtn.addEventListener("click", async () => {
+          try {
+            const encodedActivity = encodeURIComponent(name);
+            const res = await fetch(
+              `/activities/${encodedActivity}/participants?email=${encodeURIComponent(p)}`,
+              { method: "DELETE" }
+            );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || data.message || "Failed to unregister");
+            showMessage("success", data.message || "Unregistered successfully");
+            await render();
+          } catch (err) {
+            showMessage("error", err.message || err);
+          }
+        });
+
+        li.appendChild(nameSpan);
+        li.appendChild(removeBtn);
         ul.appendChild(li);
       }
       card.appendChild(ul);
